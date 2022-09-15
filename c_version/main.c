@@ -35,7 +35,6 @@ int main() {
     size_t madvised_idx = 0;
     while (1) {
         key_code = getch();
-        fprintf(stderr, "Key code: %d\n", key_code);
         if (key_code == q || key_code == EOF) {
             break;
         }

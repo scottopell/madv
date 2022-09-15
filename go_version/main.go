@@ -57,10 +57,11 @@ func main() {
 			continue
 		}
 
-		if char == 113 || char == 3 {
-			break
-		}
-		if char == f {
+		switch char {
+		case 3, 4:
+			// ctrl+c and ctrl+d
+			return
+		case f:
 			if len(allocations) > 0 {
 				var alloc []byte
 				alloc, allocations = allocations[0], allocations[1:]
@@ -68,19 +69,19 @@ func main() {
 			} else {
 				fmt.Println("Removed all allocations, can't free anything.")
 			}
-		} else if char == a {
+		case a:
 			alloc := allocateMb(allocSizeInMb)
 			fmt.Printf("Allocated memory at %d\n", &alloc[0])
 			allocations = append(allocations, alloc)
-		} else if char == g {
+		case g:
 			fmt.Println("Forcing garbage collection")
 			runtime.GC()
 			fmt.Println("GC Done.")
-		} else if char == o {
+		case o:
 			fmt.Println("Invoking FreeOsMemory")
 			debug.FreeOSMemory()
 			fmt.Println("Freed.")
-		} else {
+		default:
 			//fmt.Println("Unknown key code: ", char)
 		}
 	}
