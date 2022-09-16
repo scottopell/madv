@@ -21,6 +21,10 @@ go build -o gomadv
 ## Results
 To "view the results" the idea is to check the OS level RSS reported.
 
+```
+hwatch 'ps e -o "rss,vsz,pid" -p $(pidof gomadv)'
+```
+
 In the C version, this appears to be pretty immediate and correctly reduces the
 RSS.
 
