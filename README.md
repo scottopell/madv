@@ -24,8 +24,6 @@ To "view the results" the idea is to check the OS level RSS reported.
 In the C version, this appears to be pretty immediate and correctly reduces the
 RSS.
 
-In the Go version, this isn't working as seamlessly, even with calls to
-`FreeOsMemory`.
-
-TODO: Double check the logic in the go version
+In the Go version, the RSS goes down immediately post `FreeOsMemory`.
+It seems to take ~1min for the scavenger to return the memory otherwise.
 

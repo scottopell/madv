@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"runtime/debug"
 
+	"github.com/dustin/go-humanize"
 	"golang.org/x/term"
 )
 
@@ -47,6 +48,7 @@ func main() {
 	allocSizeInMb := 8
 
 	allocations := [][]byte{}
+	mstats := runtime.MemStats{}
 
 	for true {
 		char, err := getChar()
@@ -64,14 +66,18 @@ func main() {
 		case f:
 			if len(allocations) > 0 {
 				var alloc []byte
-				alloc, allocations = allocations[0], allocations[1:]
-				fmt.Printf("Popped off memory, %d should now be free\n", &alloc[0])
+				alloc = allocations[0]
+				// If the pointer is left in the backing array, then the allocation won't be
+				// released, that reference will keep it alive.
+				allocations[0] = nil
+				allocations = allocations[1:]
+				fmt.Printf("Popped off memory, 0x%x should now be free\n", &alloc[0])
 			} else {
 				fmt.Println("Removed all allocations, can't free anything.")
 			}
 		case a:
 			alloc := allocateMb(allocSizeInMb)
-			fmt.Printf("Allocated memory at %d\n", &alloc[0])
+			fmt.Printf("Allocated memory at 0x%x\n", &alloc[0])
 			allocations = append(allocations, alloc)
 		case g:
 			fmt.Println("Forcing garbage collection")
@@ -84,5 +90,9 @@ func main() {
 		default:
 			//fmt.Println("Unknown key code: ", char)
 		}
+
+		runtime.ReadMemStats(&mstats)
+		fmt.Println("HeapInUse", humanize.Bytes(mstats.HeapInuse), "HeapAlloc", humanize.Bytes(mstats.HeapAlloc), "HeapSys", humanize.Bytes(mstats.HeapSys), "HeapReleased", humanize.Bytes(mstats.HeapReleased), "Sys", humanize.Bytes(mstats.Sys))
+
 	}
 }
