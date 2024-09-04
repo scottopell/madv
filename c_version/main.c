@@ -7,7 +7,6 @@
 #define DEFAULT_ALLOC_SIZE (8 * 1024 * 1024)
 
 static int q = 113;
-static int a = 95;
 static int f = 102;
 static int d = 100;
 
