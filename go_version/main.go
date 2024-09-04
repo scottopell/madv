@@ -44,6 +44,7 @@ func getChar() (byte, error) {
 
 func main() {
 	fmt.Println("Press a to allocate more memory, f to get rid of the reference, o to FreeOSMemory, g to force GC. Any other key defaults to allocate.")
+	fmt.Println("FreeOSMemory does a GC followed by a forced release of memory to the OS.")
 
 	allocSizeInMb := 8
 

@@ -59,7 +59,7 @@ int main() {
             for (int i = 0; i < alloc_size / sizeof(int); i++) {
                 *(int*)(ptr + i) = 55;
             }
-            fprintf(stderr, "Allocated %p and dirtied it\n", ptr);
+            fprintf(stderr, "Allocated %p (size %d) and dirtied it\n", ptr, alloc_size);
         }
     }
     return 0;
