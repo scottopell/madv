@@ -6,19 +6,31 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strconv"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"golang.org/x/term"
 )
 
-const a = 97
-const q = 113
-const f = 102
-const o = 111
-const g = 103
+const (
+	a = 97
+	q = 113
+	f = 102
+	o = 111
+	g = 103
+)
 
 func allocateMb(s int) []byte {
 	a := make([]byte, s*1024*1024)
+	for i := 0; i < len(a); i += 4096 {
+		a[i] = 'x'
+	}
+	return a
+}
+
+func allocateBytes(s int) []byte {
+	a := make([]byte, s)
 	for i := 0; i < len(a); i += 4096 {
 		a[i] = 'x'
 	}
@@ -42,7 +54,7 @@ func getChar() (byte, error) {
 	return b[0], nil
 }
 
-func main() {
+func interactiveMode() {
 	fmt.Println("Press a to allocate more memory, f to get rid of the reference, o to FreeOSMemory, g to force GC. Any other key defaults to allocate.")
 	fmt.Println("FreeOSMemory does a GC followed by a forced release of memory to the OS.")
 
@@ -51,7 +63,7 @@ func main() {
 	allocations := [][]byte{}
 	mstats := runtime.MemStats{}
 
-	for true {
+	for {
 		char, err := getChar()
 		if err == io.EOF {
 			break
@@ -88,12 +100,71 @@ func main() {
 			fmt.Println("Invoking FreeOsMemory")
 			debug.FreeOSMemory()
 			fmt.Println("Freed.")
+		case q:
+			fmt.Println("Exiting.")
+			return
 		default:
 			//fmt.Println("Unknown key code: ", char)
 		}
 
 		runtime.ReadMemStats(&mstats)
 		fmt.Println("HeapInUse", humanize.Bytes(mstats.HeapInuse), "HeapAlloc", humanize.Bytes(mstats.HeapAlloc), "HeapSys", humanize.Bytes(mstats.HeapSys), "HeapReleased", humanize.Bytes(mstats.HeapReleased), "Sys", humanize.Bytes(mstats.Sys))
+	}
+}
 
+func upfrontMode(allocSizeInBytes int, numAllocs int, initialSleepSeconds int) {
+	mstats := runtime.MemStats{}
+	humanAllocSize := humanize.Bytes(uint64(allocSizeInBytes))
+	fmt.Printf("Operating in up-front mode with %d allocations of %d B (%s) each.\n", numAllocs, allocSizeInBytes, humanAllocSize)
+
+	fmt.Printf("Sleeping for %d seconds before allocations...\n", initialSleepSeconds)
+	time.Sleep(time.Duration(initialSleepSeconds) * time.Second)
+
+	allocations := make([][]byte, numAllocs)
+
+	for i := 0; i < numAllocs; i++ {
+		alloc := allocateBytes(allocSizeInBytes)
+		allocations[i] = alloc
+		fmt.Printf("Allocated %s memory at 0x%x\n", humanAllocSize, &alloc[0])
+	}
+
+	runtime.ReadMemStats(&mstats)
+	fmt.Println("HeapInUse", humanize.Bytes(mstats.HeapInuse), "HeapAlloc", humanize.Bytes(mstats.HeapAlloc), "HeapSys", humanize.Bytes(mstats.HeapSys), "HeapReleased", humanize.Bytes(mstats.HeapReleased), "Sys", humanize.Bytes(mstats.Sys))
+
+	fmt.Println("All allocations done. Waiting for termination...")
+
+	// Sleep indefinitely
+	for {
+		time.Sleep(time.Hour)
+	}
+}
+
+func main() {
+	allocSizeEnv := os.Getenv("ALLOC_SIZE")
+	numAllocsEnv := os.Getenv("NUM_ALLOCS")
+	initialSleepEnv := os.Getenv("INITIAL_SLEEP")
+
+	if allocSizeEnv != "" && numAllocsEnv != "" && initialSleepEnv != "" {
+		allocSizeInBytes, err := strconv.Atoi(allocSizeEnv)
+		if err != nil {
+			fmt.Println("Invalid ALLOC_SIZE, must be an integer")
+			return
+		}
+
+		numAllocs, err := strconv.Atoi(numAllocsEnv)
+		if err != nil {
+			fmt.Println("Invalid NUM_ALLOCS, must be an integer")
+			return
+		}
+
+		initialSleep, err := strconv.Atoi(initialSleepEnv)
+		if err != nil {
+			fmt.Println("Invalid INITIAL_SLEEP, must be an integer")
+			return
+		}
+
+		upfrontMode(allocSizeInBytes, numAllocs, initialSleep)
+	} else {
+		interactiveMode()
 	}
 }
