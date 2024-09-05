@@ -7,7 +7,7 @@ to allocate and de-allocate in a similar way to the go runtime.
 ## C Usage
 ```
 cd c_version
-gcc -o cmadv main.c
+make
 ./cmadv
 ```
 
