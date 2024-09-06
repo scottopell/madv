@@ -11,7 +11,7 @@ FROM ubuntu:latest
 
 WORKDIR /root/
 
-COPY --from=builder /app/gomadv .
+COPY --from=builder /app/gomadv /app/madv
 
-CMD ["./gomadv"]
+CMD ["/app/madv"]
 

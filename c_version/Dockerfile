@@ -13,8 +13,8 @@ FROM ubuntu:latest
 WORKDIR /app
 
 # Copy the built application from the builder stage
-COPY --from=builder /app/cmadv /app/cmadv
+COPY --from=builder /app/cmadv /app/madv
 
 # Set the entrypoint
-ENTRYPOINT ["/app/cmadv"]
+ENTRYPOINT ["/app/madv"]
 
