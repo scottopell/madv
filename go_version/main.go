@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -133,9 +134,15 @@ func upfrontMode(allocSizeInBytes int, numAllocs int, initialSleepSeconds int) {
 
 	fmt.Println("All allocations done. Waiting for termination...")
 
-	// Sleep indefinitely
+}
+
+func churnChildrenMode() {
+	fmt.Println("Running in child process churning mode...")
 	for {
-		time.Sleep(time.Hour)
+		cmd := exec.Command("/usr/bin/true")
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("Error running command: %v\n", err)
+		}
 	}
 }
 
@@ -143,6 +150,7 @@ func main() {
 	allocSizeEnv := os.Getenv("ALLOC_SIZE")
 	numAllocsEnv := os.Getenv("NUM_ALLOCS")
 	initialSleepEnv := os.Getenv("INITIAL_SLEEP")
+	churnChildrenEnv := os.Getenv("CHURN_CHILDREN")
 
 	if allocSizeEnv != "" && numAllocsEnv != "" && initialSleepEnv != "" {
 		allocSizeInBytes, err := strconv.Atoi(allocSizeEnv)
@@ -164,6 +172,15 @@ func main() {
 		}
 
 		upfrontMode(allocSizeInBytes, numAllocs, initialSleep)
+
+		if churnChildrenEnv != "" {
+			churnChildrenMode()
+		} else {
+			// Sleep indefinitely
+			for {
+				time.Sleep(time.Hour)
+			}
+		}
 	} else {
 		interactiveMode()
 	}
