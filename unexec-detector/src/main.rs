@@ -219,7 +219,7 @@ fn calculate_map_similarity(parent_maps: &[String], child_maps: &[String]) -> f6
         return 0.0;
     }
 
-    (intersection as f64 / union_size as f64) * 100.0
+    ((intersection as f64 / union_size as f64) * 100.0).round() / 100.0 * 100.0
 }
 
 /// Determine if a child is likely forked but not yet exec'd
@@ -251,17 +251,7 @@ fn is_forked_not_execed(pid: i32) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
 
-    // Fallback to our heuristic approach if the flag checking failed for some reason
-    let parent_pid = get_parent_pid(pid)?;
-    let parent_maps = get_process_maps(parent_pid)?;
-    let child_maps = get_process_maps(pid)?;
-    let parent_exe = get_process_exe(parent_pid)?;
-    let child_exe = get_process_exe(pid)?;
-
-    let is_likely_forked =
-        is_likely_forked_not_execed(&parent_maps, &child_maps, &parent_exe, &child_exe);
-
-    Ok(is_likely_forked)
+    Ok(false)
 }
 
 /// Check if process has the PF_FORKNOEXEC flag set
