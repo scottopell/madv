@@ -3,8 +3,18 @@ use std::error::Error;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
+use std::process::exit;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
+
+// Statistics tracking
+static TOTAL_CHILDREN_ANALYZED: AtomicUsize = AtomicUsize::new(0);
+static HEURISTIC_DETECTIONS: AtomicUsize = AtomicUsize::new(0);
+static FLAG_DETECTIONS: AtomicUsize = AtomicUsize::new(0);
+static BOTH_DETECTIONS: AtomicUsize = AtomicUsize::new(0);
+static ONLY_HEURISTIC_DETECTIONS: AtomicUsize = AtomicUsize::new(0);
+static ONLY_FLAG_DETECTIONS: AtomicUsize = AtomicUsize::new(0);
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -32,7 +42,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         sleep_duration.as_millis()
     );
 
+    // Set up ctrl-c handler for graceful shutdown with statistics
+    setup_exit_handler();
+
     loop {
+        // Check if parent process still exists
+        if !process_exists(parent_pid) {
+            println!("\nParent process {} no longer exists, exiting", parent_pid);
+            print_statistics();
+            break;
+        }
+
         poll_children(parent_pid)?;
 
         // Sleep until next poll
@@ -47,6 +67,49 @@ fn main() -> Result<(), Box<dyn Error>> {
             now.as_nanos()
         );
     }
+
+    Ok(())
+}
+
+fn process_exists(pid: i32) -> bool {
+    Path::new(&format!("/proc/{}", pid)).exists()
+}
+
+fn setup_exit_handler() {
+    ctrlc::set_handler(move || {
+        println!("\nReceived interrupt signal, shutting down...");
+        print_statistics();
+        exit(0);
+    })
+    .expect("Error setting Ctrl-C handler");
+}
+
+fn print_statistics() {
+    println!("\n--- Detection Statistics Summary ---");
+    println!(
+        "Total children analyzed: {}",
+        TOTAL_CHILDREN_ANALYZED.load(Ordering::Relaxed)
+    );
+    println!(
+        "Heuristic detections: {}",
+        HEURISTIC_DETECTIONS.load(Ordering::Relaxed)
+    );
+    println!(
+        "Flag-based detections: {}",
+        FLAG_DETECTIONS.load(Ordering::Relaxed)
+    );
+    println!(
+        "Detections by both methods: {}",
+        BOTH_DETECTIONS.load(Ordering::Relaxed)
+    );
+    println!(
+        "Detections by heuristic only: {}",
+        ONLY_HEURISTIC_DETECTIONS.load(Ordering::Relaxed)
+    );
+    println!(
+        "Detections by flag only: {}",
+        ONLY_FLAG_DETECTIONS.load(Ordering::Relaxed)
+    );
 }
 
 fn poll_children(parent_pid: i32) -> Result<(), Box<dyn Error>> {
@@ -62,6 +125,7 @@ fn poll_children(parent_pid: i32) -> Result<(), Box<dyn Error>> {
     // Examine each child
     for child_pid in children {
         println!("\nAnalyzing child PID: {}", child_pid);
+        TOTAL_CHILDREN_ANALYZED.fetch_add(1, Ordering::Relaxed);
 
         // Get child memory maps and executable
         let child_maps = match get_process_maps(child_pid) {
@@ -92,6 +156,23 @@ fn poll_children(parent_pid: i32) -> Result<(), Box<dyn Error>> {
                 (false, 0)
             }
         };
+
+        // Update statistics
+        if heuristic_result {
+            HEURISTIC_DETECTIONS.fetch_add(1, Ordering::Relaxed);
+        }
+
+        if flag_result {
+            FLAG_DETECTIONS.fetch_add(1, Ordering::Relaxed);
+        }
+
+        if heuristic_result && flag_result {
+            BOTH_DETECTIONS.fetch_add(1, Ordering::Relaxed);
+        } else if heuristic_result {
+            ONLY_HEURISTIC_DETECTIONS.fetch_add(1, Ordering::Relaxed);
+        } else if flag_result {
+            ONLY_FLAG_DETECTIONS.fetch_add(1, Ordering::Relaxed);
+        }
 
         if heuristic_result || flag_result {
             println!("  DETECTION RESULTS:");
