@@ -38,8 +38,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Sleep until next poll
         sleep(sleep_duration);
 
-        // Print a separator for readability between polls
-        println!("\n----- New poll cycle -----\n");
+        // Print a separator with timestamp for readability between polls
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        println!(
+            "\n----- New poll cycle at {} seconds since epoch -----\n",
+            now.as_nanos()
+        );
     }
 }
 
@@ -79,11 +85,11 @@ fn poll_children(parent_pid: i32) -> Result<(), Box<dyn Error>> {
             is_likely_forked_not_execed(&parent_maps, &child_maps, &parent_exe, &child_exe);
 
         // New direct flag check approach
-        let flag_result = match is_forked_not_execed(child_pid) {
-            Ok(result) => result,
+        let (flag_result, flag_bits) = match is_forked_not_execed(child_pid) {
+            Ok((result, bits)) => (result, bits),
             Err(e) => {
                 println!("  Error checking PF_FORKNOEXEC flag: {}", e);
-                false
+                (false, 0)
             }
         };
 
@@ -98,12 +104,13 @@ fn poll_children(parent_pid: i32) -> Result<(), Box<dyn Error>> {
                 }
             );
             println!(
-                "    Flag-based detection: {}",
+                "    Flag-based detection: {} (raw flags: 0x{:08x})",
                 if flag_result {
                     "DETECTED"
                 } else {
                     "Not detected"
-                }
+                },
+                flag_bits
             );
             println!("  Child executable: {}", child_exe);
             println!("  Child state: {}", get_process_state(child_pid)?);
@@ -113,6 +120,7 @@ fn poll_children(parent_pid: i32) -> Result<(), Box<dyn Error>> {
             );
         } else {
             println!("  Normal child process (already exec'd)");
+            println!("  Raw process flags: 0x{:08x}", flag_bits);
             println!("  Child executable: {}", child_exe);
             println!(
                 "  Memory map similarity: {}%",
@@ -245,45 +253,72 @@ fn is_likely_forked_not_execed(
 }
 
 /// Determine if a child is a forked but not yet exec'd process
-fn is_forked_not_execed(pid: i32) -> Result<bool, Box<dyn Error>> {
+fn is_forked_not_execed(pid: i32) -> Result<(bool, u32), Box<dyn Error>> {
     // Direct check for PF_FORKNOEXEC flag
-    if has_forknoexec_flag(pid)? {
-        return Ok(true);
+    let (has_flag, flag_bits) = has_forknoexec_flag(pid)?;
+    if has_flag {
+        return Ok((true, flag_bits));
     }
 
-    Ok(false)
+    Ok((false, flag_bits))
 }
 
 /// Check if process has the PF_FORKNOEXEC flag set
-fn has_forknoexec_flag(pid: i32) -> Result<bool, Box<dyn Error>> {
+fn has_forknoexec_flag(pid: i32) -> Result<(bool, u32), Box<dyn Error>> {
     // Read /proc/[pid]/stat file which contains process flags
     let stat_path = format!("/proc/{}/stat", pid);
     let stat_content = fs::read_to_string(stat_path)?;
 
+    // Pass the content to our testable function
+    parse_forknoexec_flag(&stat_content)
+}
+
+/// Parses a stat file content to check for PF_FORKNOEXEC flag
+/// This function is separate to facilitate unit testing
+fn parse_forknoexec_flag(stat_content: &str) -> Result<(bool, u32), Box<dyn Error>> {
     // Parse the stat file - the 9th field contains the process flags
     let fields: Vec<&str> = stat_content.split_whitespace().collect();
     if fields.len() >= 9 {
-        // PF_FORKNOEXEC flag is bit 0x00000002
+        // https://elixir.bootlin.com/linux/v6.13.7/source/include/linux/sched.h#L1679
+        // PF_FORKNOEXEC flag is bit 0x00000040
         if let Ok(flags) = fields[8].parse::<u32>() {
-            return Ok((flags & 0x00000002) != 0);
+            return Ok(((flags & 0x00000040) != 0, flags));
         }
     }
 
     Err("Could not parse process flags".into())
 }
 
-/// Get parent process ID
-fn get_parent_pid(pid: i32) -> Result<i32, Box<dyn Error>> {
-    let status_path = format!("/proc/{}/status", pid);
-    let content = fs::read_to_string(status_path)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    for line in content.lines() {
-        if line.starts_with("PPid:") {
-            if let Some(ppid_str) = line.split_whitespace().nth(1) {
-                return Ok(ppid_str.parse::<i32>()?);
-            }
-        }
+    #[test]
+    fn test_parse_forknoexec_flag_set() {
+        // Create a mock stat content with PF_FORKNOEXEC flag set (0x00000040)
+        // Format is like: "pid (comm) state ppid ... flags ..."
+        let mock_stat = "1234 (test_proc) S 1000 1000 1000 0 0 4194368 1000 0 0 0";
+        //                                                       ^ flags with bit 0x2 set
+
+        let result = parse_forknoexec_flag(mock_stat).unwrap();
+
+        // Check that the function correctly identifies the flag is set
+        assert_eq!(result.0, true);
+        // Check raw flags value
+        assert_eq!(result.1, 0x400040);
     }
 
-    Err("Could not find parent PID".into())
+    #[test]
+    fn test_parse_forknoexec_flag_not_set() {
+        // Create a mock stat content without PF_FORKNOEXEC flag set
+        let mock_stat = "1234 (test_proc) S 1000 1000 1000 0 0 4194304 1000 0 0 0";
+        //                                                       ^ flags without bit 0x2 set
+
+        let result = parse_forknoexec_flag(mock_stat).unwrap();
+
+        // Check that the function correctly identifies the flag is not set
+        assert_eq!(result.0, false);
+        // Check raw flags value
+        assert_eq!(result.1, 0x400000);
+    }
 }
