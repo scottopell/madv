@@ -3,6 +3,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <termios.h>
+#include <sys/wait.h>
 
 #define DEFAULT_ALLOC_SIZE (8 * 1024 * 1024)
 
@@ -28,6 +29,31 @@ char getch(void) {
     return ch;
 }
 
+// Function to run child processes in a loop
+void child_churn_mode() {
+    printf("Running in child process churning mode...\n");
+
+    while (1) {
+        pid_t pid = fork();
+
+        if (pid < 0) {
+            // Fork failed
+            perror("Fork failed");
+            exit(1);
+        } else if (pid == 0) {
+            // Child process
+            execl("/usr/bin/true", "true", NULL);
+
+            // If exec fails
+            perror("Exec failed");
+            exit(1);
+        } else {
+            // Parent process
+            waitpid(pid, NULL, 0);
+        }
+    }
+}
+
 void up_front_mode(size_t alloc_size, int num_allocs, int initial_sleep) {
     printf("Operating in special mode with %d allocations of %zu bytes each and an initial sleep of %d seconds.\n",
            num_allocs, alloc_size, initial_sleep);
@@ -49,15 +75,6 @@ void up_front_mode(size_t alloc_size, int num_allocs, int initial_sleep) {
         }
 
         printf("Allocated %p (size %zu) and dirtied it\n", ptrs[i], alloc_size);
-    }
-
-    // Sleep indefinitely until a signal is received
-    pause();
-
-    printf("Termination signal received. Cleaning up and exiting...\n");
-
-    for (int i = 0; i < num_allocs; i++) {
-        munmap(ptrs[i], alloc_size);
     }
 }
 
@@ -111,6 +128,7 @@ int main() {
     char *alloc_env = getenv("ALLOC_SIZE");
     char *num_allocs_env = getenv("NUM_ALLOCS");
     char *sleep_env = getenv("INITIAL_SLEEP");
+    char *churn_children_env = getenv("CHURN_CHILDREN");
 
     if (alloc_env && num_allocs_env && sleep_env) {
         size_t alloc_size = strtoul(alloc_env, NULL, 10);
@@ -118,6 +136,16 @@ int main() {
         int initial_sleep = atoi(sleep_env);
 
         up_front_mode(alloc_size, num_allocs, initial_sleep);
+
+        // If CHURN_CHILDREN is set, run the child churn mode after upfront allocation
+        if (churn_children_env) {
+            child_churn_mode();
+        } else {
+        // Sleep indefinitely until a signal is received
+        pause();
+
+        printf("Termination signal received. Exiting...\n");
+        }
     } else {
         interactive_mode();
     }
